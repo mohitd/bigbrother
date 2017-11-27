@@ -8,6 +8,7 @@ function [box] = covTracking(searchRegion,  cov, initialSize, K)
 boxes = [];
 scores = [];
 [height, width, ~] = size(searchRegion);
+
 for i = 1:2
     for k = 1:size(K,1)
         windowSize = floor(K(k) .* initialSize);
@@ -17,7 +18,6 @@ for i = 1:2
         for r = 1:(height - windowSize(1) + 1)
             for c = 1:(width - windowSize(2) + 1)
                 roi = searchRegion(r:(r+windowSize(1)-1), c:(c+windowSize(2)-1), :);
-
                 roiCov = computeCovMatrix(roi);
                 distance = covMetric(cov, roiCov);
 

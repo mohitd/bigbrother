@@ -8,6 +8,7 @@
 vanRaw = VideoReader('van.mpg');
 
 split = 192;
+frameCounter = 1;
 
 %vanRaw.CurrentTime = 8;
 
@@ -39,9 +40,9 @@ while hasFrame(vanRaw)
     %SURF STUFF REMOVEME used to generate homography
     %getFeatures(vanFrame1,vanFrame2);
     
-    %Mean Shift
     img_new = double(vanFrame1);
     if is_start == 1
+        % initialize model and covariance matrix
         is_start = 0;
         
         minPt = vanPoint1 - extents;
@@ -53,17 +54,7 @@ while hasFrame(vanRaw)
         X1 = circularNeighbors(img_new, vanPoint1(1), vanPoint1(2), r); 
         qModel = colorHistogram(X1, bins, vanPoint1(1), vanPoint1(2), h);
     else
-        for i = 1:6 %<- Adjust for acc (was 5, set to 1 for H points)
-            % construct candidate
-            X2 = circularNeighbors(img_new, vanPoint1(1), vanPoint1(2), r);
-            pTest = colorHistogram(X2, bins, vanPoint1(1), vanPoint1(2), h);
-            % weights
-            w = meanshiftWeights(X2, qModel, pTest, bins);
-            % compute new value
-            newX = sum([X2(:,1) X2(:,2)] .* [w w]) / sum(w);
-
-            vanPoint1 = newX;
-        end
+        vanPoint1 = meanShift(img_new, qModel, vanPoint1, r, h, bins);
     end
     
     % reorganize points
@@ -88,5 +79,10 @@ while hasFrame(vanRaw)
     %Calc new pos in camera 2
     vanPoint2 = calcPoint(vanPoint1, hv);
     displayImages(vanFrame1, vanFrame2, vanPoint1, extents, vanPoint2, match, searchRegion);
-    %break;
+    
+    if frameCounter == 2
+        break;
+    end
+    
+    frameCounter = frameCounter + 1;
 end

@@ -10,7 +10,7 @@ featureMatrix = zeros(width * height, 4);
 
 for row = 1:size(roi, 1)
     for col = 1:size(roi, 2)
-        idx = sub2ind([height width], row, col);
+        idx = width * row + col;
         coord = [row col];
         radialDistance = sqrt(sum((coord - center) .^ 2));
         featureMatrix(idx, 1) = radialDistance;
