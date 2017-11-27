@@ -7,6 +7,8 @@
 
 vanRaw = VideoReader('van.mpg');
 
+split = 192;
+
 %vanRaw.CurrentTime = 8;
 
 %homography estimate for van
@@ -17,14 +19,20 @@ bins = 16;
 h = 25;
 r = 7; %25
 is_start = 1;
+buffer = 5;
+K = [0.5 1]';
 
 %van point
-vanPoint1 = [47 88]; % kid 167 103 8s
+vanRoi = [34 81; 52 81; 52 93; 34 93];
+roiSize = max(vanRoi, [], 1) - min(vanRoi,[],1);
+extents = floor(roiSize / 2);
+
+% track center point of ROI
+vanPoint1 = min(vanRoi,[],1) + extents;
 
 while hasFrame(vanRaw)
     %Van Code
-    vanFrame = readFrame(vanRaw);
-    split = 192;
+    vanFrame = readFrame(vanRaw);    
     vanFrame1 = vanFrame(:, 1:split, :);
     vanFrame2 = vanFrame(:, (split + 1):end, :);
     
@@ -33,27 +41,52 @@ while hasFrame(vanRaw)
     
     %Mean Shift
     img_new = double(vanFrame1);
-    if(is_start == 1)
+    if is_start == 1
         is_start = 0;
+        
+        minPt = vanPoint1 - extents;
+        maxPt = vanPoint1 + extents;
+        
+        roi = img_new(minPt(2):maxPt(2), minPt(1):maxPt(1), :);
+        covMatrix = computeCovMatrix(roi);
         
         X1 = circularNeighbors(img_new, vanPoint1(1), vanPoint1(2), r); 
         qModel = colorHistogram(X1, bins, vanPoint1(1), vanPoint1(2), h);
     else
         for i = 1:6 %<- Adjust for acc (was 5, set to 1 for H points)
-        % construct candidate
-        X2 = circularNeighbors(img_new, vanPoint1(1), vanPoint1(2), r);
-        pTest = colorHistogram(X2, bins, vanPoint1(1), vanPoint1(2), h);
-        % weights
-        w = meanshiftWeights(X2, qModel, pTest, bins);
-        % compute new value
-        newX = sum([X2(:,1) X2(:,2)] .* [w w]) / sum(w);
+            % construct candidate
+            X2 = circularNeighbors(img_new, vanPoint1(1), vanPoint1(2), r);
+            pTest = colorHistogram(X2, bins, vanPoint1(1), vanPoint1(2), h);
+            % weights
+            w = meanshiftWeights(X2, qModel, pTest, bins);
+            % compute new value
+            newX = sum([X2(:,1) X2(:,2)] .* [w w]) / sum(w);
 
-        vanPoint1 = newX;
+            vanPoint1 = newX;
         end
     end
+    
+    % reorganize points
+    searchRegion = calcPoint([vanPoint1 - extents; vanPoint1 + extents], hv);
+    
+    minPt = min(searchRegion, [], 1) - buffer;
+    maxPt = max(searchRegion, [], 1) + buffer;
+    
+    searchRegion(1,:) = floor(minPt);
+    searchRegion(2,:) = floor(maxPt);
+    
+    searchRoi = vanFrame2(searchRegion(1,2):searchRegion(1,1),... 
+        searchRegion(2,2):searchRegion(2,1), :);
+    searchRoi = double(searchRoi);
+    
+    match = covTracking(searchRoi, covMatrix, roiSize, K);
+    match(1) = match(1) + minPt(1);
+    match(2) = match(2) + minPt(2);
+    
+    match = floor(match);
   
     %Calc new pos in camera 2
-    vanPoint2 = calcPoint(vanPoint1', hv);
-    displayImages(vanFrame1, vanFrame2, vanPoint1, vanPoint2);
+    vanPoint2 = calcPoint(vanPoint1, hv);
+    displayImages(vanFrame1, vanFrame2, vanPoint1, extents, vanPoint2, match, searchRegion);
     %break;
 end
