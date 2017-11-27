@@ -6,8 +6,9 @@
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{amssymb}
-\usepackage{lipsum}
 \usepackage{url}
+\usepackage{pgfplots}
+\pgfplotsset{width=7cm,compat=1.3}
 
 \begin{document}
 
@@ -33,7 +34,7 @@ Cameras are ever present in our society. They are on traffic lights, on top of b
 
 \section{BigBrother}
 \label{sec:bigbrother}
-The problem of object tracking through multiple cameras $\{\mathcal{C}_1,\dots,\mathcal{C}_N\}$, given a target $T$ in one camera, is to find and track that target in the other cameras. For simplicity, we assume that the target $T$ is first identified in $\mathcal{C}_1$; we call this the \textbf{primary camera}. We immediately start mean-shift tracking for the four points that define the bounding box around our target. This mean shift produces new coordinates that we can transform to other cameras. We use a variant of covariance tracking in the other cameras to match a target. The initial covariance matrix is taken from the feature matrix of the target $T$. Algorithm \ref{algo:bigbrother} describes our algorithm at a high level. The details are described in subsequent sections.
+The problem of object tracking through multiple cameras $\{\mathcal{C}_1,\dots,\mathcal{C}_N\}$, given a target $T$ in one camera, is to find and track that target in the other cameras. For simplicity, we assume that the target $T$ is first identified in $\mathcal{C}_1$ and call this the \textbf{primary camera}. We immediately start mean-shift tracking for the centroid of the target's bounding box. This mean shift produces new coordinates for the target, and we can transform to other cameras. We use a novel multi-scale variant of covariance tracking to match the target in the non-primary camera. The initial covariance matrix is taken from the feature matrix of the target. Algorithm~\ref{algo:bigbrother} describes our algorithm at a high level. The details are described in subsequent sections.
 
 \begin{algorithm}
 \caption{\texttt{BigBrother} Algorithm}\label{algo:bigbrother}
@@ -50,8 +51,8 @@ The problem of object tracking through multiple cameras $\{\mathcal{C}_1,\dots,\
             \State $B_i\gets\emptyset$
             \State \textbf{continue}
         \EndIf
-        \State $S\gets\mathtt{search\_region}(T')$\Comment{Search region around meanshift estimate}
-        \State $B_i\gets\mathtt{multiscale\_cov\_tracking}(\Sigma, S)$
+        \State $S\gets\mathtt{search\_region}(T')$\Comment{Search region around mean-shift estimate}
+        \State $B_i\gets\mathtt{multiscale\_cov\_track}(\Sigma, S)$
     \EndFor
 \EndWhile
 \EndProcedure
@@ -60,9 +61,9 @@ The problem of object tracking through multiple cameras $\{\mathcal{C}_1,\dots,\
 
 \subsection{Homography}
 \label{sec:homography}
-To track a target $T$ across multiple cameras, we must have either complete 3D knowledge of the space of the cameras and their positioning in that space or, more simply, a homography between the cameras. We can only compute the homography if the field-of-view of the cameras overlap, which we assume. Specifically, for $N$ cameras, we require only $N-1$ homographies because we can compute the inverse homographies and use a sequence of them to translate between any two cameras.
+To track a target across multiple cameras, we must have either complete 3D knowledge of the space of the cameras and their positioning in that space or, more simply, a homography between the cameras. We can only compute the homography if the field-of-view of the cameras overlap.
 
-We compute a homography offline by selecting corresponding pixels in the two camera views. We may use a corner or feature detector to make pixel selection easier. We require at least 4 corresponding coordinates to compute the homography, however, for a better homography we used $?$ points.
+We compute a homography offline by selecting corresponding pixels between the two camera views. We may use a corner or feature detector to make pixel selection easier. We require at least 4 corresponding coordinates to compute the homography, however, for a better homography we used $14$ points.
 
 Each point is converted into inhomogeneous coordinates, and we solve the system of linear equations to produce the homography matrix $H$ between two camera views.
 
@@ -70,51 +71,88 @@ For robustness, we use a normalized direct linear transform. We normalize our po
 
 \subsection{Mean-Shift Tracking}
 \label{sec:meanshift}
-After computing the homography and identifying the region of interest in one camera frame, we can start mean-shift tracking~\cite{comaniciu2003kernel}. We use $?$ color bins for the color quantization. We use circular neighbors with a radius of $r=?$. For the Epanechnikov profile, we use $h=?$.
+After computing the homography and identifying the region of interest in one camera frame, we can start mean-shift tracking~\cite{comaniciu2003kernel}. We assume the target's size is constant through the frames. We only track the centroid of the target. We use $16$ color bins for the color quantization. We use circular neighbors with a radius of $r=7$ and $h=25$ for the Epanechnikov profile.
 
-At each frame of the mean-shift tracking, we use the homography to transform the mean-shift-tracked points into the other camera(s). If the homography is accuracy, we can determine the target is in a particular camera frame or not. If the transformed points are not in the frame, i.e., outside of bounds of the camera frame. However, if the points lie inside of the camera frame, we know that the target is present in a particular camera frame.
+At each frame of the mean-shift tracking, we use the homography to transform the mean-shift-tracked centroid into the other camera(s). If the homography is accuracy, we can determine the target is in a particular camera frame or not. If the transformed points are not in the frame, i.e., outside of bounds of the camera frame. However, if the points lie inside of the camera frame, we know that the target is present in a particular camera frame.
 
 \subsection{Covariance Tracking}
 \label{sec:covariance}
-To find the target in the other cameras, we use covariance tracking~\cite{porikli2006covariance}. The primary issue with covariance tracking is speed: we have to search the entire image. However, we can the transformed mean-shift estimate to narrow our search space. In particular, the covariance matrix initialized from the original target in the primary camera. For our feature vector, we try several different representations, but use radial coordinate system.
+To find the target in the other cameras, we use a novel multi-scale covariance tracking~\cite{porikli2006covariance}. The primary issue with covariance tracking is speed: we have to search the entire image. However, we can the transformed mean-shift estimate to narrow our search space. We take the bounding box points from the target in the primary camera frame and transform them into other camera frames. Since the homography might produces points that are skew, we take the axis-aligned rectangle to be our search area. This approach drastically limits our search space and improves speed. We found a $XX\%$ reduction, on average, in the number of pixels we must search.
 
-Homographies are not completely accurate, hence, the transformed points will not be accurate. They may also be skewed, i.e., not aligned with the image coordinates. We determine the minimum spanning rectangle around our transformed points and use that as our search space. Then we can perform covariance tracking only in that space. This drastically limits our search space. We found a $XX\%$ reduction in the number of pixels we must search.
+The covariance matrix initialized from the original target in the primary camera. For our feature vector, we use the radial vector described in~\cite{porikli2006covariance} for each pixel in the search space.
 
-We do not start mean-shift tracking in the other camera frame since we want to maintain the relationship of the target between several cameras. If we were to mean-shift track in all cameras, these would operate independently. This makes it impossible to pick up a target in a new camera since mean-shift would stop tracking after the target leaves a frame. To remedy this, we use the homography to connect the primary camera to the other cameras. If the target moves into the field-of-view of another camera, we will notice the project points will lie in the camera's field-of-view.
+\[
+\mathbf{f} = \left[ ||(x', y')||~~I(x,y,1)~~I(x,y,2)~~I(x,y,3)\right]
+\]
+
+where $||(x', y')||$ is the radial distance from the center of the patch to the $j$th pixel in the patch. The last $3$ components are the RGB components of the pixel.
+
+The covariance matrix is initialized with a fixed patch in the primary camera. However, in other cameras, the target may have a different scales. We propose a new multi-scale approach, inspired by the Region Proposal Network~\cite{ren2015faster}, that changes the scale of the sliding window in the search space. We define $K$ factors that scale the dimensions of the sliding window. This sliding window size change is also why we used the radial component of the feature vector. In addition to scaling the initial window, we also flip the dimensions, e.g., we use a sliding window of size $5\times 3$ as well as $3\times 5$, for every $K$ scaling factor. 
+
+We perform covariance tracking by searching for the best, i.e., minimum-distance, match, computed using the metric described in~\cite{forstner2003metric}. However, doing this for $K$ filters and flipped dimensions, we will have $2\cdot K$ bounding boxes around the location of lowest distance. We simply use non-maximal suppression to reduce this number and select the bounding box of the smallest distance. The speed of this algorithm depends on the size of the search space $|S|$ and the number of scaling factors $K$. However, in practice, $K$ is much smaller compared to $|S|$, which dominates the runtime complexity.
+
+We do not start mean-shift tracking in the other camera frame since we want to maintain the relationship of the target between several cameras. If we were to mean-shift track in all cameras, these would operate independently. This makes it impossible to pick up a target in a new camera since mean-shift would stop tracking after the target leaves a frame. To remedy this, we use the homography to connect the primary camera to the other cameras. If the target moves into the field-of-view of another camera, we will notice the project points will lie in the camera's field-of-view. This allows us to drop the target from a camera if it falls out of view and pick up the target in a camera if it comes into view.
 
 \subsection{Work Allocation}
-Mr. Pershon was tasked with computing the homography $H$ between the two cameras. This was computed by manually matching correspondence points and solving the linear system of equations. He also coded a real-time implementation of mean-shift tracking for the primary camera.
+Mr. Pershon computed the homography $H$ between the two cameras. This was computed by manually matching correspondence points and solving the linear system of equations as described in Section~\ref{sec:homography}. He also implemented a highly-vectorized variant of mean-shift tracking for the primary camera.
 
-Dr. Deshpande implemented the covariance tracking variance and the code for the cross-camera cooperation. He also implemented the multi-scale covariance searching across aspect ratios.
+Mr. Deshpande implemented the multi-scale covariance tracking and cross-camera interaction described in Section~\ref{sec:covariance}.
 
 \subsection{Challenges}
 \vspace{5pt}
-\noindent\textbf{Co-planar points.} Since we use homographies for translating between different cameras, we only get reasonable results when the target is co-planar with the ground-plane. This is the largest limitation since many cameras, particularly indoor ones, do not have a high enough vantage point to satisfy the co-planar points, or even approximate it reasonably.
+\noindent\textbf{Co-planar points.} Homographies or other measurements are not entirely accurate; there is always some error associated with them. When transforming points between cameras, the transformed points are not that accurate. However, we can ameliorate this inconsistency by using more points when computing our homography. Since we use homographies for translating between different cameras, we only get reasonable results when the target is co-planar with the ground-plane. This is the largest limitation since many cameras, particularly indoor ones, do not have a high enough vantage point to satisfy the co-planar points, or even approximate it reasonably.
 
 \vspace{5pt}
-\noindent\textbf{Inaccurate homography.} Homographies or other measurements are not entirely accurate; there is always some error associated with them. When transforming points between cameras, the transformed points are not that accurate. However, we can ameliorate this inconsistency by using more points when computing our homography.
-
-\vspace{5pt}
-\noindent\textbf{Loss of target in primary camera.} One assumption our algorithm makes is that the target $T$ remains in the same camera the entire during of our approach. If we lose the target in one camera but it is still present in another camera, we simply switch from covariance tracking to mean-shift; that camera becomes our primary camera. If there are multiple cameras, 
+\noindent\textbf{Loss of target in primary camera.} One assumption our algorithm makes is that the target remains in the same camera the entire during of our approach. If we lose the target in one camera but it is still present in another camera, we simply switch from covariance tracking to mean-shift; that camera becomes our primary camera.
 
 \vspace{5pt}
 \noindent\textbf{Vastly varying target sizes.} The covariance matrix is computed from a patch of fixed size. When we perform the search, we compute the covariance of several aspect ratios. However, if our target does not match one of these aspect ratios, then we may miss the detection. However, since they're computed as a function of the original target dimensions, we are likely to detect the target in the other cameras.
 
 \section{Results}
 \label{sec:results}
-Without loss of generality, we consider only two cameras for our experiments.
+For our dataset, we used a video sample from the PETS 2001 dataset. The video has two surveillance cameras in the daytime, each with $384\times 144$ resolution. In particular, we track a moving van between these two cameras. A frame from the dataset is shown in Figure~\ref{fig:dataset}. All experiments, accuracy and performance, were conducted on an Intel i7@3.2GHz processor with 16GB of RAM and no parallelization. Our algorithm was implemented in MATLAB, specifically 2017b.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    xbar,
+    symbolic y coords={\texttt{covTracking},\texttt{meanShift},\texttt{buildCovMatrix},\texttt{cov}},
+    xmode=log,
+    log ticks with fixed point,
+    xlabel={Time (ms)},
+    ]
+    \addplot[fill=blue] coordinates {
+        (800.569,\texttt{covTracking})
+        (24.276,\texttt{meanShift})
+        (0.214,\texttt{buildCovMatrix})
+        (0.043,\texttt{cov})
+    };
+\end{axis}
+\end{tikzpicture}
+\caption{Performance of our components. Our multi-scale covariance tracking takes an order of magnitude longer than mean-shift tracking, as expected.}\label{fig:perf}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics{dataset.png}
+\caption{Example frame from our data. Our accuracy experiments track the moving white van.}\label{fig:dataset}
+\end{figure}
+
+Figure~\ref{fig:perf} shows our algorithm's performance.\texttt{buildCovMatrix} is a subroutine inside of \texttt{covTracking} that constructs the covariance variance for each sliding window patch. \texttt{cov} is a subroutine inside of \texttt{buildCovMatrix} simply computes the covariance matrix $\Sigma$. It should be noted that \texttt{buildCovMatrix} and \texttt{cov} are called thousands of times, on average, since we must construct the covariance matrix for each patch. This is where the bulk of the time is spent. The multi-scale covariance tracking clearly takes the longest amount of time. Mean-shift tracking, even with 50 iterations, takes an order of magnitude less time than covariance tracking. Its performance scales linearly if we reduce the number of scaling factors.
 
 \subsection{Lessons Learned}
 \vspace{5pt}
-\noindent\textbf{Vectorize code.} Vectorized code tends to run faster than non-vectorized code due to parallelism and efficient algorithms for large matrix multiplication, e.g., Strassen's Algorithm. We learned a good approach is to start without vectorized code and remove loops by condensing data structures into matrices or tensors. Tensor arithmetic is also noticeably faster than non-vectorized code.
+\noindent\textbf{Vectorize code.} Vectorized code tends to run faster than non-vectorized code due to parallelism and efficient algorithms for large matrix multiplication. We learned a good approach is to start without vectorized code and remove loops by condensing data structures into matrices or tensors. Tensor arithmetic is also noticeably faster than non-vectorized code.
 
 \vspace{5pt}
-\noindent\textbf{Use camera calibration files.} Many datasets we worked provided their own camera calibration matrices. Working with these matrices is not entirely straightforward at times.
+\noindent\textbf{Use camera calibration files.} Many datasets we worked provided their own camera calibration matrices. Working with these matrices is not entirely straightforward at times. Furthermore, homographies can be quite time-consuming to compute. Automated approaches exist, but we did not investigate these.
+
 
 \section{Future Work}
 \label{sec:future}
 \vspace{5pt}
-\noindent\textbf{Narrow search space with an object detector.} Instead of creating the search space from the projected points, we can reduce our search space even further by running a object detector, such as Faster R-CNN, YOLO, or Single-Shot Detector, on each non-primary camera. These models draw bounding boxes on each object in a frame, depending on the frame rate. Then we can check the box of the object closest to the transformed points.
+\noindent\textbf{Narrow search space with an object detector.} Instead of creating the search space from the projected points, we can reduce our search space even further by running a object detector, such as Faster R-CNN~\cite{ren2015faster}, YOLO~\cite{redmon2016you}, or Single-Shot Detector~\cite{liu2016ssd}, on each non-primary camera. These models draw bounding boxes on each object in a frame, depending on the frame rate. Then we can check the box of the object closest to the transformed points.
 
 \vspace{5pt}
 \noindent\textbf{Construct a visual hull.} Knowing the locations of cameras in 3D space allows us to use an algorithm such as VisualHull to construct a complete 3D wireframe of the target. This provides additional information, such as target height, that may be used to help narrow searching or constructing a description of the target.
