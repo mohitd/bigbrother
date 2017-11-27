@@ -1,77 +1,128 @@
-\documentclass[10pt,twocolumn,letterpaper]{article}
+\documentclass{article}
 
-\usepackage{cvpr}
-\usepackage{times}
-\usepackage{epsfig}
+\usepackage[top=1in, bottom=1.25in, left=1.25in, right=1.25in]{geometry}
+\usepackage{algpseudocode}
+\usepackage{algorithm}
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{lipsum}
+\usepackage{url}
 
-\usepackage[breaklinks=true,bookmarks=false]{hyperref}
-
-\cvprfinalcopy
-
-\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
-
-% Pages are numbered in submission mode, and unnumbered in camera-ready
-\ifcvprfinal\pagestyle{empty}\fi
-%\setcounter{page}{4321}
 \begin{document}
 
-%%%%%%%%% TITLE
-\title{Big Brother: Multi-camera Person Tracking}
+\title{Big Brother: Multi-camera Object Tracking}
 
-\author{Mohit Deshpande\\
-The Ohio State University\\
-Columbus, OH\\
-{\tt\small deshpande.75@osu.edu}
-% For a paper whose authors are all at the same institution,
-% omit the following lines up until the closing ``}''.
-% Additional authors and addresses can be added with ``\and'',
-% just like the second author.
-% To save space, use either the email address or home page, not both
-\and
-Brad Pershon\\
-The Ohio State University\\
-Columbus, OH\\
-{\tt\small pershon.1@osu.edu}
+\author{
+  Mohit Deshpande\\
+  The Ohio State University\\
+  \texttt{deshpande.75@osu.edu}
+  \and
+  Brad Pershon\\
+  The Ohio State University\\
+  \texttt{pershon.1@osu.edu}
 }
+
+\date{}
 
 \maketitle
-%\thispagestyle{empty}
 
-%%%%%%%%% ABSTRACT
-\begin{abstract}
-    \lipsum[1]
-\end{abstract}
 
-%%%%%%%%% BODY TEXT
 \section{Introduction}
-\lipsum[1-5]
+Cameras are ever present in our society. They are on traffic lights, on top of buildings, inside buildings, and even on buses. Millions of dollars go to law enforcement and cities to help stop crime~\cite{surveillance}. Even universities are including cameras in their bus systems~\cite{cabs}. With this massive coverage of cameras, many of them overlap with each other, e.g., the field-of-view of a camera in a bus might overlap with that of the camera on a building that the bus is stopped at. In the event of a crime, law enforcement check all of these cameras and must manually track the perpetrator through potentially hundreds of cameras~\cite{surveillance}. Instead, we present an automated solution, called \texttt{BigBrother}, that can follow a target across any number of cameras. 
 
 \section{BigBrother}
-\lipsum[1-5]
+\label{sec:bigbrother}
+The problem of object tracking through multiple cameras $\{\mathcal{C}_1,\dots,\mathcal{C}_N\}$, given a target $T$ in one camera, is to find and track that target in the other cameras. For simplicity, we assume that the target $T$ is first identified in $\mathcal{C}_1$; we call this the \textbf{primary camera}. We immediately start mean-shift tracking for the four points that define the bounding box around our target. This mean shift produces new coordinates that we can transform to other cameras. We use a variant of covariance tracking in the other cameras to match a target. The initial covariance matrix is taken from the feature matrix of the target $T$. Algorithm \ref{algo:bigbrother} describes our algorithm at a high level. The details are described in subsequent sections.
+
+\begin{algorithm}
+\caption{\texttt{BigBrother} Algorithm}\label{algo:bigbrother}
+\begin{algorithmic}[1]
+\Procedure{BigBrother}{$\mathcal{C}_1,\dots,\mathcal{C}_N,T$}
+\State $\Sigma\gets \mathtt{feature\_cov}(T)$\Comment{Covariance matrix for other cameras}
+\State $B_i\gets\emptyset~~~~\forall i\in\{2,\dots,N\}$\Comment{Position of the target in other cameras}
+\While{true}
+    \State $T\gets \mathtt{meanshift}(\mathcal{C}_1, T)$\Comment{Update the target's position}
+
+    \For{$i\gets 1$ to $N$}
+        \State $T'\gets H(\mathcal{C}_1, \mathcal{C}_i)\cdot T$\Comment{Transform coordinates using homography}
+        \If{$T'\not\in\mathcal{C}_i$}
+            \State $B_i\gets\emptyset$
+            \State \textbf{continue}
+        \EndIf
+        \State $S\gets\mathtt{search\_region}(T')$\Comment{Search region around meanshift estimate}
+        \State $B_i\gets\mathtt{multiscale\_cov\_tracking}(\Sigma, S)$
+    \EndFor
+\EndWhile
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Homography}
+\label{sec:homography}
+To track a target $T$ across multiple cameras, we must have either complete 3D knowledge of the space of the cameras and their positioning in that space or, more simply, a homography between the cameras. We can only compute the homography if the field-of-view of the cameras overlap, which we assume. Specifically, for $N$ cameras, we require only $N-1$ homographies because we can compute the inverse homographies and use a sequence of them to translate between any two cameras.
+
+We compute a homography offline by selecting corresponding pixels in the two camera views. We may use a corner or feature detector to make pixel selection easier. We require at least 4 corresponding coordinates to compute the homography, however, for a better homography we used $?$ points.
+
+Each point is converted into inhomogeneous coordinates, and we solve the system of linear equations to produce the homography matrix $H$ between two camera views.
+
+For robustness, we use a normalized direct linear transform. We normalize our points to have zero mean and shift the average distance of the resulting points to the origin is $\sqrt{2}$. We could have additionally improved this algorithm using Random Sample Consensus (RANSAC)~\cite{fischler1981random}.
+
+\subsection{Mean-Shift Tracking}
+\label{sec:meanshift}
+After computing the homography and identifying the region of interest in one camera frame, we can start mean-shift tracking~\cite{comaniciu2003kernel}. We use $?$ color bins for the color quantization. We use circular neighbors with a radius of $r=?$. For the Epanechnikov profile, we use $h=?$.
+
+At each frame of the mean-shift tracking, we use the homography to transform the mean-shift-tracked points into the other camera(s). If the homography is accuracy, we can determine the target is in a particular camera frame or not. If the transformed points are not in the frame, i.e., outside of bounds of the camera frame. However, if the points lie inside of the camera frame, we know that the target is present in a particular camera frame.
+
+\subsection{Covariance Tracking}
+\label{sec:covariance}
+To find the target in the other cameras, we use covariance tracking~\cite{porikli2006covariance}. The primary issue with covariance tracking is speed: we have to search the entire image. However, we can the transformed mean-shift estimate to narrow our search space. In particular, the covariance matrix initialized from the original target in the primary camera. For our feature vector, we try several different representations, but use radial coordinate system.
+
+Homographies are not completely accurate, hence, the transformed points will not be accurate. They may also be skewed, i.e., not aligned with the image coordinates. We determine the minimum spanning rectangle around our transformed points and use that as our search space. Then we can perform covariance tracking only in that space. This drastically limits our search space. We found a $XX\%$ reduction in the number of pixels we must search.
+
+We do not start mean-shift tracking in the other camera frame since we want to maintain the relationship of the target between several cameras. If we were to mean-shift track in all cameras, these would operate independently. This makes it impossible to pick up a target in a new camera since mean-shift would stop tracking after the target leaves a frame. To remedy this, we use the homography to connect the primary camera to the other cameras. If the target moves into the field-of-view of another camera, we will notice the project points will lie in the camera's field-of-view.
 
 \subsection{Work Allocation}
-\lipsum[1-5]
+Mr. Pershon was tasked with computing the homography $H$ between the two cameras. This was computed by manually matching correspondence points and solving the linear system of equations. He also coded a real-time implementation of mean-shift tracking for the primary camera.
+
+Dr. Deshpande implemented the covariance tracking variance and the code for the cross-camera cooperation. He also implemented the multi-scale covariance searching across aspect ratios.
 
 \subsection{Challenges}
-\lipsum[1-5]
+\vspace{5pt}
+\noindent\textbf{Co-planar points.} Since we use homographies for translating between different cameras, we only get reasonable results when the target is co-planar with the ground-plane. This is the largest limitation since many cameras, particularly indoor ones, do not have a high enough vantage point to satisfy the co-planar points, or even approximate it reasonably.
+
+\vspace{5pt}
+\noindent\textbf{Inaccurate homography.} Homographies or other measurements are not entirely accurate; there is always some error associated with them. When transforming points between cameras, the transformed points are not that accurate. However, we can ameliorate this inconsistency by using more points when computing our homography.
+
+\vspace{5pt}
+\noindent\textbf{Loss of target in primary camera.} One assumption our algorithm makes is that the target $T$ remains in the same camera the entire during of our approach. If we lose the target in one camera but it is still present in another camera, we simply switch from covariance tracking to mean-shift; that camera becomes our primary camera. If there are multiple cameras, 
+
+\vspace{5pt}
+\noindent\textbf{Vastly varying target sizes.} The covariance matrix is computed from a patch of fixed size. When we perform the search, we compute the covariance of several aspect ratios. However, if our target does not match one of these aspect ratios, then we may miss the detection. However, since they're computed as a function of the original target dimensions, we are likely to detect the target in the other cameras.
 
 \section{Results}
-\lipsum[1-5]
+\label{sec:results}
+Without loss of generality, we consider only two cameras for our experiments.
 
 \subsection{Lessons Learned}
-\lipsum[1-5]
+\vspace{5pt}
+\noindent\textbf{Vectorize code.} Vectorized code tends to run faster than non-vectorized code due to parallelism and efficient algorithms for large matrix multiplication, e.g., Strassen's Algorithm. We learned a good approach is to start without vectorized code and remove loops by condensing data structures into matrices or tensors. Tensor arithmetic is also noticeably faster than non-vectorized code.
+
+\vspace{5pt}
+\noindent\textbf{Use camera calibration files.} Many datasets we worked provided their own camera calibration matrices. Working with these matrices is not entirely straightforward at times.
 
 \section{Future Work}
-\lipsum[1-5]
+\label{sec:future}
+\vspace{5pt}
+\noindent\textbf{Narrow search space with an object detector.} Instead of creating the search space from the projected points, we can reduce our search space even further by running a object detector, such as Faster R-CNN, YOLO, or Single-Shot Detector, on each non-primary camera. These models draw bounding boxes on each object in a frame, depending on the frame rate. Then we can check the box of the object closest to the transformed points.
 
+\vspace{5pt}
+\noindent\textbf{Construct a visual hull.} Knowing the locations of cameras in 3D space allows us to use an algorithm such as VisualHull to construct a complete 3D wireframe of the target. This provides additional information, such as target height, that may be used to help narrow searching or constructing a description of the target.
 
-{\small
-\bibliographystyle{ieee}
-\bibliography{bbbib}
-}
+\vspace{5pt}
+\noindent\textbf{Triangulate new cameras.} Cameras on moving objects, such as buses, are difficult to incorporate in this system. However, if we can identify the position and pose of a camera using VisualHull, we can compute an approximation of the moving camera in the 3D space of the fixed cameras. This immediately adds the moving camera to the network of fixed cameras. The moving camera is removed from the network when it moves outside of the 3D space of the fixed cameras.
+
+\bibliographystyle{abbrv}
+\bibliography{biblio}
 
 \end{document}
