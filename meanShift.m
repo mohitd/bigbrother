@@ -6,7 +6,7 @@ function [X] = meanShift(img_new, qModel, p1, r, h, bins)
 %   h: is the Epanechnikov profile parameter
 %   bins: is the number of bins utlized in the color histogram
 
-for i = 1:16 %<- Adjust for acc (7 is min X1 1 run build)
+for i = 1:3 %<- Adjust for acc (7 is good)
     % construct candidate
     X2 = circularNeighbors(img_new, p1(1), p1(2), r);
     pTest = colorHistogram(X2, bins, p1(1), p1(2), h);

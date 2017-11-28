@@ -13,18 +13,18 @@ frameCounter = 1;
 %vanRaw.CurrentTime = 8;
 
 %homography estimate for van
-hv = [-0.0217520729234989,0.856129441419913,-102.488860336591;-0.0629133385268018,-0.547872008185205,37.6794937800455;0.000973516955072778,-0.00300901746189340,-0.0769403576320744];
+hv = [0.0363290990792627,-0.794525903497003,95.2809196746197;0.0591400409370579,0.491985361829041,-33.7103160613083;-0.000899040995371794,0.00296290596489446,0.0533758696343162];
 
 %Mean-shift vars
 bins = 16;
 h = 25;
-r = 7; %25
+r = 5; %7 on grill, 5 some drift but reasonable, 3 has best cov tracking
 is_start = 1;
 buffer = 5;
 K = [0.5 1]';
 
 %van point
-vanRoi = [34 81; 52 81; 52 93; 34 93];
+vanRoi = [42 86; 42 94; 52 86; 52 94];
 roiSize = max(vanRoi, [], 1) - min(vanRoi,[],1);
 extents = floor(roiSize / 2);
 
@@ -80,9 +80,9 @@ while hasFrame(vanRaw)
     vanPoint2 = calcPoint(vanPoint1, hv);
     displayImages(vanFrame1, vanFrame2, vanPoint1, extents, vanPoint2, match, searchRegion);
     
-    if frameCounter == 2
-        break;
-    end
+%     if frameCounter == 1
+%         break;
+%     end
     
     frameCounter = frameCounter + 1;
 end
