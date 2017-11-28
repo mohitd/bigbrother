@@ -10,7 +10,10 @@ vanRaw = VideoReader('van.mpg');
 split = 192;
 frameCounter = 1;
 
-%vanRaw.CurrentTime = 8;
+%Video making code
+workingDir = tempname;
+mkdir(workingDir)
+mkdir(workingDir,'images')
 
 %homography estimate for van
 hv = [0.0363290990792627,-0.794525903497003,95.2809196746197;0.0591400409370579,0.491985361829041,-33.7103160613083;-0.000899040995371794,0.00296290596489446,0.0533758696343162];
@@ -39,7 +42,7 @@ while hasFrame(vanRaw)
     
     %SURF STUFF REMOVEME used to generate homography
     %getFeatures(vanFrame1,vanFrame2);
-    
+
     img_new = double(vanFrame1);
     if is_start == 1
         % initialize model and covariance matrix
@@ -78,11 +81,21 @@ while hasFrame(vanRaw)
   
     %Calc new pos in camera 2
     vanPoint2 = calcPoint(vanPoint1, hv);
-    displayImages(vanFrame1, vanFrame2, vanPoint1, extents, vanPoint2, match, searchRegion);
-    
-%     if frameCounter == 1
-%         break;
-%     end
-    
+    displayImages(vanFrame1, vanFrame2, vanPoint1, extents, vanPoint2, match, searchRegion, workingDir, frameCounter);
+       
     frameCounter = frameCounter + 1;
 end
+
+imageNames = dir(fullfile(workingDir,'images','*.jpg'));
+imageNames = {imageNames.name}';
+
+outputVideo = VideoWriter(fullfile('van_out'));
+outputVideo.FrameRate = vanRaw.FrameRate;
+open(outputVideo)
+
+for ii = 1:length(imageNames)
+   img = imread(fullfile(workingDir,'images',imageNames{ii}));
+   writeVideo(outputVideo,img)
+end
+
+close(outputVideo)
