@@ -63,21 +63,21 @@ The problem of object tracking through multiple cameras $\{\mathcal{C}_1,\dots,\
 \label{sec:homography}
 To track a target across multiple cameras, we must have either complete 3D knowledge of the space of the cameras and their positioning in that space or, more simply, a homography between the cameras. We can only compute the homography if the field-of-view of the cameras overlap.
 
-We compute a homography offline by selecting corresponding pixels between the two camera views. We may use a corner or feature detector to make pixel selection easier. We require at least 4 corresponding coordinates to compute the homography, however, for a better homography we used $14$ points.
+We compute a homography offline by selecting corresponding pixels between the two camera views. We may use a corner or feature detector to make pixel selection easier. We require at least 4 corresponding coordinates to compute the homography, however, for a better homography we used $32$ points.
 
-Each point is converted into inhomogeneous coordinates, and we solve the system of linear equations to produce the homography matrix $H$ between two camera views.
+Each point is converted into homogeneous coordinates, and we solve the system of linear equations to produce the homography matrix $H$ between two camera views.
 
 For robustness, we use a normalized direct linear transform. We normalize our points to have zero mean and shift the average distance of the resulting points to the origin is $\sqrt{2}$. We could have additionally improved this algorithm using Random Sample Consensus (RANSAC)~\cite{fischler1981random}.
 
 \subsection{Mean-Shift Tracking}
 \label{sec:meanshift}
-After computing the homography and identifying the region of interest in one camera frame, we can start mean-shift tracking~\cite{comaniciu2003kernel}. We assume the target's size is constant through the frames. We only track the centroid of the target. We use $16$ color bins for the color quantization. We use circular neighbors with a radius of $r=7$ and $h=25$ for the Epanechnikov profile.
+After computing the homography and identifying the region of interest in one camera frame, we can start mean-shift tracking~\cite{comaniciu2003kernel}. We assume the target's size is constant through the frames. We only track the centroid of the target. We use $16$ color bins for the color quantization. We use circular neighbors with a radius of $r=5$ and $h=25$ for the Epanechnikov profile. We use a smaller radius since we're using a smaller resolution.
 
-At each frame of the mean-shift tracking, we use the homography to transform the mean-shift-tracked centroid into the other camera(s). If the homography is accuracy, we can determine the target is in a particular camera frame or not. If the transformed points are not in the frame, i.e., outside of bounds of the camera frame. However, if the points lie inside of the camera frame, we know that the target is present in a particular camera frame.
+At each frame of the mean-shift tracking, we use the homography to transform the mean-shift-tracked centroid into the other camera(s). If the homography is accurate, we can determine the target is in a particular camera frame or not. If the transformed points are not in the frame, i.e., outside of bounds of the camera frame. However, if the points lie inside of the camera frame, we know that the target is present in a particular camera frame.
 
 \subsection{Covariance Tracking}
 \label{sec:covariance}
-To find the target in the other cameras, we use a novel multi-scale covariance tracking~\cite{porikli2006covariance}. The primary issue with covariance tracking is speed: we have to search the entire image. However, we can the transformed mean-shift estimate to narrow our search space. We take the bounding box points from the target in the primary camera frame and transform them into other camera frames. Since the homography might produces points that are skew, we take the axis-aligned rectangle to be our search area. This approach drastically limits our search space and improves speed. We found a $XX\%$ reduction, on average, in the number of pixels we must search.
+To find the target in the other cameras, we use a novel multi-scale covariance tracking~\cite{porikli2006covariance}. The primary issue with covariance tracking is speed: we have to search the entire image. However, we can the transformed mean-shift estimate to narrow our search space. We take the bounding box points from the target in the primary camera frame and transform them into other camera frames. Since the homography might produces points that are skew, we take the axis-aligned rectangle to be our search area. This approach drastically limits our search space and improves speed. On average, we found a $90.1\%$ reduction in the number of pixels we must search.
 
 The covariance matrix initialized from the original target in the primary camera. For our feature vector, we use the radial vector described in~\cite{porikli2006covariance} for each pixel in the search space.
 
@@ -146,8 +146,10 @@ Figure~\ref{fig:perf} shows our algorithm's performance.\texttt{buildCovMatrix} 
 \noindent\textbf{Vectorize code.} Vectorized code tends to run faster than non-vectorized code due to parallelism and efficient algorithms for large matrix multiplication. We learned a good approach is to start without vectorized code and remove loops by condensing data structures into matrices or tensors. Tensor arithmetic is also noticeably faster than non-vectorized code.
 
 \vspace{5pt}
-\noindent\textbf{Use camera calibration files.} Many datasets we worked provided their own camera calibration matrices. Working with these matrices is not entirely straightforward at times. Furthermore, homographies can be quite time-consuming to compute. Automated approaches exist, but we did not investigate these.
+\noindent\textbf{Use camera calibration files.} Many datasets we worked provided their own camera calibration matrices. Working with these matrices is not entirely straightforward at times. Furthermore, point matching for computing the homography can be quite time-consuming. We need to manually select good corresponding points to use for the homography. Automated approaches exist, but the perspective difference between the two camera is large enough that these don't work.
 
+\vspace{5pt}
+\noindent\textbf{Account for drift.} Mean-shift tracking point tends to drift in the primary camera. This can drastically affect the projection of the points into another camera frame. A small change in position in the primary camera might lead to a large movement in another camera. This drastically affects the quality of the result: if we use a constant size search area, then a large jump may cause the target to be outside of the search region. One solution to this is varying the search area size as a function of the Euclidean distance between the last two positions of mean-shift tracking, i.e., use a larger search area if mean-shift tracking jumped far and vice-versa.
 
 \section{Future Work}
 \label{sec:future}
@@ -158,7 +160,7 @@ Figure~\ref{fig:perf} shows our algorithm's performance.\texttt{buildCovMatrix} 
 \noindent\textbf{Construct a visual hull.} Knowing the locations of cameras in 3D space allows us to use an algorithm such as VisualHull to construct a complete 3D wireframe of the target. This provides additional information, such as target height, that may be used to help narrow searching or constructing a description of the target.
 
 \vspace{5pt}
-\noindent\textbf{Triangulate new cameras.} Cameras on moving objects, such as buses, are difficult to incorporate in this system. However, if we can identify the position and pose of a camera using VisualHull, we can compute an approximation of the moving camera in the 3D space of the fixed cameras. This immediately adds the moving camera to the network of fixed cameras. The moving camera is removed from the network when it moves outside of the 3D space of the fixed cameras.
+\noindent\textbf{Dynamic camera switching.} One useful feature for an application of multi-camera tracking is dynamically switching between cameras that have lost and captured the target. For example, if a target is no longer visible in one camera, remove the camera feed from the application dashboard. If it is picked up in another camera, add the camera feed to the dashboard. This allows the user to keep track of all cameras on the target without having to search through many different camera feeds.
 
 \bibliographystyle{abbrv}
 \bibliography{biblio}
