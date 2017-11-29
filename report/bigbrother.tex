@@ -7,8 +7,9 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{url}
+\usepackage{booktabs}
 \usepackage{pgfplots}
-\pgfplotsset{width=7cm,compat=1.3}
+\pgfplotsset{compat=1.14}
 
 \begin{document}
 
@@ -77,7 +78,7 @@ At each frame of the mean-shift tracking, we use the homography to transform the
 
 \subsection{Covariance Tracking}
 \label{sec:covariance}
-To find the target in the other cameras, we use a novel multi-scale covariance tracking~\cite{porikli2006covariance}. The primary issue with covariance tracking is speed: we have to search the entire image. However, we can the transformed mean-shift estimate to narrow our search space. We take the bounding box points from the target in the primary camera frame and transform them into other camera frames. Since the homography might produces points that are skew, we take the axis-aligned rectangle to be our search area. This approach drastically limits our search space and improves speed. On average, we found a $90.1\%$ reduction in the number of pixels we must search.
+To find the target in the other cameras, we use a novel multi-scale covariance tracking~\cite{porikli2006covariance}. The primary issue with covariance tracking is speed: we have to search the entire image. However, we can the transformed mean-shift estimate to narrow our search space. We take the bounding box points from the target in the primary camera frame and transform them into other camera frames. Since the homography might produces points that are skew, we take the axis-aligned rectangle to be our search area. This approach drastically limits our search space and improves speed. On average, we found a $94.3\%$ reduction in the number of pixels we must search.
 
 The covariance matrix initialized from the original target in the primary camera. For our feature vector, we use the radial vector described in~\cite{porikli2006covariance} for each pixel in the search space.
 
@@ -110,7 +111,19 @@ Mr. Deshpande implemented the multi-scale covariance tracking and cross-camera i
 
 \section{Results}
 \label{sec:results}
-For our dataset, we used a video sample from the PETS 2001 dataset. The video has two surveillance cameras in the daytime, each with $384\times 144$ resolution. In particular, we track a moving van between these two cameras. A frame from the dataset is shown in Figure~\ref{fig:dataset}. All experiments, accuracy and performance, were conducted on an Intel i7@3.2GHz processor with 16GB of RAM and no parallelization. Our algorithm was implemented in MATLAB, specifically 2017b.
+For our dataset, we used a video sample from the PETS 2001 dataset. The video has two surveillance cameras in the daytime, each with $384\times 144$ resolution. In particular, we track a moving van between these two cameras. A frame from the dataset is shown in Figure~\ref{fig:dataset}. Figure~\ref{fig:results} shows an example frame from the running our algorithm. All experiments, accuracy and performance, were conducted on an Intel i7@3.2GHz processor with 16GB of RAM and no parallelization. Our algorithm was implemented in MATLAB, specifically 2017b.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{dataset.png}
+\caption{Example frames from our dataset. Our experiments track the moving white van.}\label{fig:dataset}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{results.png}
+\caption{Example frames from running our algorithm. The blue box represents the projected search area, and the red box is the location of the target.}\label{fig:results}
+\end{figure}
 
 \begin{figure}[t]
 \centering
@@ -133,13 +146,26 @@ For our dataset, we used a video sample from the PETS 2001 dataset. The video ha
 \caption{Performance of our components. Our multi-scale covariance tracking takes an order of magnitude longer than mean-shift tracking, as expected.}\label{fig:perf}
 \end{figure}
 
-\begin{figure}[t]
-\centering
-\includegraphics{dataset.png}
-\caption{Example frame from our data. Our accuracy experiments track the moving white van.}\label{fig:dataset}
-\end{figure}
-
 Figure~\ref{fig:perf} shows our algorithm's performance.\texttt{buildCovMatrix} is a subroutine inside of \texttt{covTracking} that constructs the covariance variance for each sliding window patch. \texttt{cov} is a subroutine inside of \texttt{buildCovMatrix} simply computes the covariance matrix $\Sigma$. It should be noted that \texttt{buildCovMatrix} and \texttt{cov} are called thousands of times, on average, since we must construct the covariance matrix for each patch. This is where the bulk of the time is spent. The multi-scale covariance tracking clearly takes the longest amount of time. Mean-shift tracking, even with 50 iterations, takes an order of magnitude less time than covariance tracking. Its performance scales linearly if we reduce the number of scaling factors.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccccccc}
+\toprule
+\textbf{Radius} & \textbf{tp} & \textbf{fp} & \textbf{tn} & \textbf{fn} & \textbf{Precision} & \textbf{Recall} & \textbf{Accuracy} \\
+\midrule
+3 & 8 & 7 & 15 & 10 & 0.5333 & 0.4444 & 0.5750\\
+5 & 10 & 7 & 12 & 11 & 0.5882 & 0.4762 & 0.5500\\
+7 & 5 & 5 & 12 & 18 & 0.5000 & 0.2174 & 0.4250\\
+20 & 5 & 5 & 10 & 20 & 0.5000 & 0.2000 & 0.2500\\
+\bottomrule
+\end{tabular}
+\caption{Confusion matrices for varying neighborhood sizes. Smaller neighborhood size results in better quality.}\label{fig:accuracy}
+\end{table}
+
+Table~\ref{fig:accuracy} shows our algorithm's precision, recall, accuracy, as well as the confusion matrices, as a function of the neighborhood radius of the mean-shift tracking algorithm. Since we had no ground-truth data, we randomly sampled $40$ frames and had a human judge if the bounding box was referring to the van. In our specific case, precision means, from the detected events, i.e., the ``positives'', the target is correctly inside of the bounding box, and, recall means our algorithm correctly detected the target whenever it was actually there.
+
+We see that using a smaller mean-shift neighborhood radius produces better precision and recall in the other cameras. However, in the primary camera, mean-shift tracking suffers as a result. The smaller neighborhood radius is also more appropriate for the dimensions of the camera feed.
 
 \subsection{Lessons Learned}
 \vspace{5pt}
