@@ -5,7 +5,7 @@ function displayImages(c0, c1, c0_p, extents, c1_p, match, searchRegion, dir, fn
 %   c0_p: point to plot in image 1
 %   c1_p: point to plot in image 2
 
-%h = figure;
+h = figure;
 
 subplot(1, 2, 1), subimage(c0);
 hold on
@@ -30,10 +30,10 @@ else
 end
 hold off
 
-%filename = [sprintf('%03d',fn) '.jpg'];
-%fullname = fullfile(dir,'images',filename);
-%saveas(h, fullname);
-%close(h);
+filename = [sprintf('%03d',fn) '.jpg'];
+fullname = fullfile(dir,'images',filename);
+saveas(h, fullname);
+close(h);
 
 drawnow;
 end
